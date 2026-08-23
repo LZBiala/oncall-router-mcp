@@ -6,7 +6,7 @@ say to try first**. Plus a fourth that most tools get wrong, which is **where sh
 on the clock right now**, measured from when impact started rather than from when somebody
 opened a ticket.
 
-Zero dependencies. No API key, no network calls, no telemetry. It reads one local file.
+No runtime dependencies, no API key, no network calls, no telemetry. It reads one local file. pytest is needed only to run the gates.
 
 ## Why this exists
 
@@ -39,8 +39,24 @@ code actually produces.
 
 ```bash
 git clone <this repo> && cd oncall-router-mcp
-python -m pytest tests/ -q                 # 26 tests, no install needed
+python -m pip install "pytest>=7"          # the only dependency, and only to run the tests
+python -m pytest tests/ -q                 # 40 tests
 PYTHONPATH=src python -m oncall_router.server --catalog catalog.toml
+```
+
+To wire it into Claude Desktop or Claude Code, add this to your MCP client config,
+using absolute paths:
+
+```json
+{
+  "mcpServers": {
+    "oncall-router": {
+      "command": "python",
+      "args": ["-m", "oncall_router.server", "--catalog", "/abs/path/to/catalog.toml"],
+      "env": { "PYTHONPATH": "/abs/path/to/oncall-router-mcp/src" }
+    }
+  }
+}
 ```
 
 Point an MCP client at that command. To use your own data, copy `catalog.toml`, edit it,

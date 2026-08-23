@@ -35,11 +35,17 @@ SCENES = [
      "impact_clock", {"service": "api-gateway", "severity": "sev1",
                       "impact_start": "2026-08-23T14:00:00Z",
                       "now": "2026-08-23T14:22:00Z"}),
-    ("The ticket was opened at 14:30 for both, but impact started 28 minutes apart",
-     "impact_clock", {"service": "api-gateway", "severity": "sev1",
-                      "impact_start": "2026-08-23T14:02:00Z",
-                      "now": "2026-08-23T14:30:00Z"}),
 ]
+
+# The point of the whole project, shown as a comparison rather than asserted. Same clock
+# time, same ticket, two different impact starts. One team is three hops deep and late;
+# the other has not missed anything yet.
+CONTRAST = {
+    "title": "Why impact start, and not ticket creation",
+    "now": "2026-08-23T14:30:00Z",
+    "left": ("Impact began at 14:00, ticket raised at 14:30", "2026-08-23T14:00:00Z"),
+    "right": ("Impact began at 14:28, ticket raised at 14:30", "2026-08-23T14:28:00Z"),
+}
 
 
 def render(cat: Catalog) -> str:
@@ -56,6 +62,26 @@ def render(cat: Catalog) -> str:
         result = fn(cat, *_positional(name, args))
         out.write(json.dumps(result, indent=2))
         out.write("\n```\n")
+
+    out.write(f"\n## {CONTRAST['title']}\n\n")
+    out.write("Identical ticket, identical clock time, impact starts 28 minutes apart.\n")
+    out.write("A tool that measured from the ticket would call these the same incident.\n")
+    rows = []
+    for label, start in (CONTRAST["left"], CONTRAST["right"]):
+        r = tools.impact_clock(cat, "api-gateway", "sev1", start, CONTRAST["now"])
+        rows.append((label, r))
+        out.write(f"\n**{label}**\n\n```json\n")
+        out.write(json.dumps({
+            "elapsed_minutes": r["elapsed_minutes"],
+            "current_hop": r["current_hop"],
+            "overdue": [h["role"] for h in r["overdue"]],
+            "next_hop": r["next_hop"],
+        }, indent=2))
+        out.write("\n```\n")
+    a, b = rows[0][1], rows[1][1]
+    out.write(f"\nThe first is {a['elapsed_minutes']} minutes in with "
+              f"{len(a['overdue'])} hop(s) overdue. The second is {b['elapsed_minutes']} "
+              f"minutes in with {len(b['overdue'])}. Same ticket.\n")
     return out.getvalue()
 
 

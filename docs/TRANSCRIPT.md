@@ -158,53 +158,46 @@ impact_clock("service": "api-gateway", "severity": "sev1", "impact_start": "2026
 }
 ```
 
-## The ticket was opened at 14:30 for both, but impact started 28 minutes apart
+## Why impact start, and not ticket creation
 
-```
-impact_clock("service": "api-gateway", "severity": "sev1", "impact_start": "2026-08-23T14:02:00Z", "now": "2026-08-23T14:30:00Z")
-```
+Identical ticket, identical clock time, impact starts 28 minutes apart.
+A tool that measured from the ticket would call these the same incident.
+
+**Impact began at 14:00, ticket raised at 14:30**
 
 ```json
 {
-  "found": true,
-  "service": "api-gateway",
-  "severity": "sev1",
-  "impact_start": "2026-08-23T14:02:00+00:00",
-  "now": "2026-08-23T14:30:00+00:00",
-  "elapsed_minutes": 28,
+  "elapsed_minutes": 30,
   "current_hop": {
-    "team": "Edge Gateway",
-    "role": "engineering manager",
-    "handle": "@edge-em",
-    "at_minute": 25
-  },
-  "overdue": [
-    {
-      "team": "Edge Gateway",
-      "role": "primary on-call",
-      "handle": "@edge-oncall",
-      "at_minute": 5
-    },
-    {
-      "team": "Edge Gateway",
-      "role": "network duty",
-      "handle": "@net-duty",
-      "at_minute": 10
-    },
-    {
-      "team": "Edge Gateway",
-      "role": "engineering manager",
-      "handle": "@edge-em",
-      "at_minute": 25
-    }
-  ],
-  "next_hop": {
     "team": "Platform Incident Command",
     "role": "incident commander",
     "handle": "@incident-command",
     "at_minute": 30
   },
-  "minutes_to_next": 2,
-  "note": "Elapsed time is measured from impact start, not from ticket creation."
+  "overdue": [
+    "primary on-call",
+    "network duty",
+    "engineering manager",
+    "incident commander"
+  ],
+  "next_hop": null
 }
 ```
+
+**Impact began at 14:28, ticket raised at 14:30**
+
+```json
+{
+  "elapsed_minutes": 2,
+  "current_hop": null,
+  "overdue": [],
+  "next_hop": {
+    "team": "Edge Gateway",
+    "role": "primary on-call",
+    "handle": "@edge-oncall",
+    "at_minute": 5
+  }
+}
+```
+
+The first is 30 minutes in with 4 hop(s) overdue. The second is 2 minutes in with 0. Same ticket.

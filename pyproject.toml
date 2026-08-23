@@ -5,6 +5,10 @@ description = "An MCP server that answers who owns it, who to wake, and what the
 requires-python = ">=3.11"
 dependencies = []
 
+# The server has no runtime dependencies. pytest is needed to run the gates.
+[project.optional-dependencies]
+dev = ["pytest>=7,<10"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

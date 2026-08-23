@@ -27,8 +27,27 @@ def who_owns(cat: Catalog, service: str) -> dict[str, Any]:
             "reason": f"No service matches {service!r} in this catalog.",
         }
     svc = cat.services[name]
-    team = cat.team_of(name) or {}
-    first = (team.get("escalation") or [{}])[0]
+    team = cat.team_of(name)
+    if not team:
+        return {
+            "found": False,
+            "asked_for": service,
+            "service": name,
+            "team": None,
+            "reason": (f"Service {name!r} names owner {svc.get('owner')!r}, which this "
+                       f"catalog does not define. Fix the catalog before escalating."),
+        }
+    chain = team.get("escalation") or []
+    if not chain:
+        return {
+            "found": False,
+            "asked_for": service,
+            "service": name,
+            "team": team.get("name"),
+            "reason": (f"Team {team.get('name')!r} owns {name!r} but lists no contacts. "
+                       f"There is nobody to page."),
+        }
+    first = chain[0]
     return {
         "found": True,
         "asked_for": service,
@@ -62,6 +81,16 @@ def escalation_path(cat: Catalog, service: str, severity: str) -> dict[str, Any]
         }
 
     hops = _walk(cat, name, sev.get("hops", 1))
+    if not hops:
+        owner = cat.services[name].get("owner")
+        return {
+            "found": False,
+            "service": name,
+            "hops": [],
+            "reason": (f"No escalation chain resolves for {name!r}: it names owner "
+                       f"{owner!r}, which this catalog either does not define or leaves "
+                       f"without contacts. Nothing to escalate to."),
+        }
     return {
         "found": True,
         "service": name,
@@ -110,16 +139,23 @@ def impact_clock(
     Measured from impact start rather than from ticket creation. Those are not the same
     moment, and the gap between them is where escalation quietly runs late.
     """
-    start = _parse(impact_start)
+    start, start_aware = _parse(impact_start)
     if start is None:
         return {"found": False, "reason": "impact_start must be an ISO 8601 timestamp, "
                                           "for example 2026-08-23T14:00:00Z."}
-    current = _parse(now) if now else None
+    current, now_aware = _parse(now) if now else (None, False)
     if now and current is None:
         return {"found": False, "reason": "now must be an ISO 8601 timestamp when supplied."}
     if current is None:
         return {"found": False, "reason": "now is required as an ISO 8601 timestamp: this "
                                           "tool never assumes the current time for you."}
+    if start_aware != now_aware:
+        # Assuming UTC for the naive one would inflate or deflate elapsed time by the
+        # caller's whole offset, and report the wrong hop with total confidence.
+        naked = "impact_start" if not start_aware else "now"
+        return {"found": False,
+                "reason": (f"{naked} carries no timezone offset while the other does. "
+                           f"Supply both with offsets, or neither.")}
     if current < start:
         return {"found": False,
                 "reason": "impact_start is after now. Check the timestamps before escalating."}
@@ -183,17 +219,23 @@ def _walk(cat: Catalog, service_name: str, hops_rule: Any) -> list[dict[str, Any
         offset = last
         team_key = team.get("next_hop") if unlimited else None
 
+    # A catalog edited under pressure can list contacts out of order. The clock reads this
+    # list positionally, so sort it here rather than trusting the file. Stable, so equal
+    # minutes keep the order the catalog gave them.
+    out.sort(key=lambda h: h["at_minute"])
     return out
 
 
-def _parse(value: str | None) -> dt.datetime | None:
+def _parse(value: str | None) -> tuple[dt.datetime | None, bool]:
+    """Returns (timestamp, had_offset). Awareness is reported, never silently invented."""
     if not value or not isinstance(value, str):
-        return None
+        return None, False
     text = value.strip().replace("Z", "+00:00")
     try:
         parsed = dt.datetime.fromisoformat(text)
     except ValueError:
-        return None
-    if parsed.tzinfo is None:
+        return None, False
+    aware = parsed.tzinfo is not None
+    if not aware:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed
+    return parsed, aware

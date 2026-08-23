@@ -17,13 +17,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      # No install step and no dependencies to resolve. That is the point.
+      # The server itself has no dependencies. pytest is a test-time dependency, and
+      # setup-python does not provide it: without this step the suite never collects and
+      # every gate below is silently skipped.
+      - name: Install the test harness
+        run: python -m pip install "pytest>=7,<10"
+
       - name: Tests, including the real-client and hygiene gates
         run: python -m pytest tests/ -q
 
       # The committed transcript is a claim about what this code does. Regenerate it
       # and fail the build if the committed version no longer matches.
-      - name: Drift gate
+      - name: Regenerate the transcript
         run: python tools/demo.py --write
 
       - name: Fail if the transcript drifted
