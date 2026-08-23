@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No install step and no dependencies to resolve. That is the point.
+      - name: Tests, including the real-client and hygiene gates
+        run: python -m pytest tests/ -q
+
+      # The committed transcript is a claim about what this code does. Regenerate it
+      # and fail the build if the committed version no longer matches.
+      - name: Drift gate
+        run: python tools/demo.py --write
+
+      - name: Fail if the transcript drifted
+        run: git diff --exit-code -- docs/TRANSCRIPT.md

@@ -1,0 +1,17 @@
+[project]
+name = "oncall-router-mcp"
+version = "0.1.0"
+description = "An MCP server that answers who owns it, who to wake, and what the runbook says."
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

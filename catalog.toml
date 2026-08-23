@@ -1,0 +1,124 @@
+# Sample service catalog. Every name in this file is invented.
+#
+# This file is the whole knowledge base. Swap it and every answer changes with no code
+# edit, which is gate G4. TOML rather than YAML on purpose: tomllib ships in the Python
+# standard library, so the catalog costs this project zero dependencies, and it still
+# takes comments, which matters because the person editing this at 3am is tired.
+
+# ----------------------------------------------------------------------------- teams
+
+[teams.edge-gateway]
+name = "Edge Gateway"
+hours = "24x7"
+next_hop = "platform-incident-command"
+escalation = [
+  { role = "primary on-call", handle = "@edge-oncall", within_minutes = 5 },
+  { role = "network duty", handle = "@net-duty", within_minutes = 10 },
+  { role = "engineering manager", handle = "@edge-em", within_minutes = 25 },
+]
+
+[teams.identity]
+name = "Identity and Access"
+hours = "business hours, follow-the-sun after 18:00"
+next_hop = "platform-incident-command"
+escalation = [
+  { role = "primary on-call", handle = "@identity-oncall", within_minutes = 10 },
+  { role = "security duty officer", handle = "@sec-duty", within_minutes = 20 },
+]
+
+[teams.payments-platform]
+name = "Payments Platform"
+hours = "24x7"
+next_hop = "platform-incident-command"
+escalation = [
+  { role = "primary on-call", handle = "@payments-oncall", within_minutes = 5 },
+  { role = "secondary on-call", handle = "@payments-secondary", within_minutes = 15 },
+  { role = "engineering manager", handle = "@payments-em", within_minutes = 30 },
+]
+
+[teams.platform-incident-command]
+name = "Platform Incident Command"
+hours = "24x7"
+escalation = [
+  { role = "incident commander", handle = "@incident-command", within_minutes = 5 },
+]
+
+# -------------------------------------------------------------------------- services
+
+[services.api-gateway]
+aliases = ["gateway", "apigw", "edge", "the gateway"]
+owner = "edge-gateway"
+tier = 1
+description = "North-south entry point for external API traffic."
+
+[services.api-gateway.runbook]
+general = [
+  "Check the gateway health dashboard for error rate and latency by route.",
+  "Compare against the last deploy: most gateway pain is a config change.",
+  "If one upstream is failing, isolate the route before rolling anything back.",
+]
+latency = [
+  "Look at p99 by upstream, not overall p99. One slow upstream hides in the average.",
+  "Check connection pool saturation before blaming the network.",
+]
+"5xx" = [
+  "Split 502 from 503: 502 is usually the upstream, 503 is usually us.",
+  "Check whether rate limiting is shedding load as designed.",
+]
+
+[services.auth-service]
+aliases = ["auth", "login", "sso"]
+owner = "identity"
+tier = 1
+description = "Issues and validates session tokens for all customer-facing apps."
+
+[services.auth-service.runbook]
+general = [
+  "Check token issuance rate against the seven-day baseline.",
+  "Confirm the signing key has not rotated unexpectedly.",
+]
+latency = [
+  "Check the directory backend first: auth latency is usually downstream.",
+]
+
+[services.payment-orchestrator]
+aliases = ["payments", "orchestrator", "pay-orch"]
+owner = "payments-platform"
+tier = 1
+description = "Routes payment instructions to the correct downstream rail."
+
+[services.payment-orchestrator.runbook]
+general = [
+  "Check queue depth per rail before declaring a full outage.",
+  "Confirm whether one rail is degraded or all of them are.",
+]
+stuck-queue = [
+  "Identify the oldest message and its rail.",
+  "Do not drain the queue until you know why it stopped moving.",
+]
+
+[services.reporting-batch]
+aliases = ["reports", "batch"]
+owner = "payments-platform"
+tier = 3
+description = "Overnight reporting jobs. Not customer facing."
+
+[services.reporting-batch.runbook]
+general = [
+  "Check whether the upstream extract completed before investigating the job.",
+]
+
+# ------------------------------------------------------------------------ severities
+# hops = "all" keeps climbing into the next team. A number stops after that many hops.
+
+[severities.sev1]
+description = "Customer-facing outage or material financial impact."
+hops = "all"
+
+[severities.sev2]
+description = "Degraded service, workaround exists."
+hops = 2
+
+[severities.sev3]
+description = "Internal or low impact, business hours response."
+hops = 1
