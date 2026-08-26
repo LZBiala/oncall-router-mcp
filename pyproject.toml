@@ -2,6 +2,8 @@
 name = "oncall-router-mcp"
 version = "0.1.0"
 description = "An MCP server that answers who owns it, who to wake, and what the runbook says."
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
 

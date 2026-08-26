@@ -1,4 +1,6 @@
-﻿# oncall-router-mcp
+# oncall-router-mcp
+
+![ci](https://github.com/LZBiala/oncall-router-mcp/actions/workflows/ci.yml/badge.svg)
 
 An MCP server that answers the three questions that eat the first ten minutes of an
 incident: **who owns this**, **who do I wake and by when**, and **what does the runbook
@@ -6,18 +8,96 @@ say to try first**. Plus a fourth that most tools get wrong, which is **where sh
 on the clock right now**, measured from when impact started rather than from when somebody
 opened a ticket.
 
-No runtime dependencies, no API key, no network calls, no telemetry. It reads one local file. pytest is needed only to run the gates.
+No runtime dependencies, no API key, no network calls, no telemetry. It reads one local
+file. pytest is needed only to run the gates.
 
-## Why this exists
+## Explained simply
 
-Escalation knowledge lives in three places: a wiki nobody updated, a rotation tool that
-only knows the current shift, and the head of whoever has been there longest. At 2am the
-expensive minutes go to working out who to call, not to fixing anything.
+Picture the wall next to an old fire-station telephone. Taped to it is a laminated card:
+which crew covers which district, who to call when the first call goes unanswered, and
+what to do first for each kind of fire - with the minutes printed beside each name, so
+you know when an unanswered call becomes the next call. Every firehouse has one, because
+at 2am nobody should be *remembering* - they should be *reading*.
 
-This puts that knowledge somewhere an assistant can reach it, and makes the timing
-explicit. The design opinion in the code is that escalation timing runs from impact start.
-A ticket opened twenty minutes late does not buy the responder twenty extra minutes, and a
-tool that measures from ticket creation will quietly tell you that it does.
+This server is that laminated card for your software, written so an AI assistant can read
+it for you while your hands are busy. That is all MCP (Model Context Protocol) is: a
+standard socket that lets an assistant plug into outside tools. This repo is one small
+plug. It puts your team's on-call knowledge - owners, escalation chains, runbook first
+moves, expected timings - where the assistant you already use can reach it.
+
+The knowledge itself usually lives in three places: a wiki nobody updated, a rotation tool
+that only knows the current shift, and the head of whoever has been there longest. At 2am
+the expensive minutes go to working out who to call, not to fixing anything. This moves
+those minutes back where they belong.
+
+## What this looks like during a real incident
+
+It is 2:47am. Your monitor fires: **checkout error rate 40% for six minutes**. You open
+your assistant, paste the alert, and ask for a first-ten-minutes brief. With this server
+connected, the assistant can answer from your catalog instead of from its imagination:
+
+1. **"Who owns this?"** - `who_owns("cart")` resolves the alias (nobody types
+   `checkout-service-v2` at 2am) and returns the Storefront team with the primary on-call
+   handle and their coverage hours.
+2. **"Who do I wake, and by when?"** - `escalation_path("checkout", "sev1")` returns the
+   full chain in order - primary at minute 5, secondary at minute 15, engineering manager
+   at minute 30, then up into Platform Incident Command - because a sev1 climbs all the
+   way and a sev3 deliberately does not.
+3. **"What do I try first?"** - `playbook("checkout", "declines")` returns the two moves
+   written for that exact symptom, starting with splitting declines by payment method,
+   because one failing method hides inside an overall rate.
+4. **"Where should we be on the clock?"** - `impact_clock` takes when impact started and
+   what time it is now, and answers which escalation hop should already be active and
+   what is overdue - measured from impact start, not from when the ticket was opened.
+
+Every answer above is what the shipped sample catalog actually returns, word for word in
+structure. The full JSON for every
+tool, including the failure paths, is in [docs/TRANSCRIPT.md](docs/TRANSCRIPT.md) - and CI
+regenerates that file on every push and fails the build if it drifts from what the code
+actually produces. The docs cannot lie about the code.
+
+## Wire it into your production alert flow
+
+Three patterns, from zero setup to fully automated. In all three the server only ever
+*answers questions* - it never pages anyone and never changes state, so the human stays in
+command.
+
+**1. Paste the alert (zero setup beyond the config below).** Alert lands in your phone,
+you paste it into Claude Desktop or Claude Code with this server connected, together with
+this prompt:
+
+```text
+A production alert just fired. Alert text: <paste the alert here>.
+Using only the oncall-router tools, give me a first-ten-minutes brief:
+1. Which service is this and who owns it (who_owns - try the name the alert uses).
+2. Who do I wake and by when (escalation_path - I will give you the severity).
+3. The first three moves (playbook - match the symptom; say if you fell back to general).
+4. Where we are on the clock (impact_clock - impact started at <time>, it is now <time>).
+Report exactly what the tools return. If a tool says found=false, say so - do not guess.
+```
+
+**2. Trigger it from the alert itself (headless).** Any alerting webhook can hand the
+payload to a headless assistant run, and the brief is drafted before you have found your
+glasses. Save the JSON config from the setup section below as `oncall.mcp.json` - same
+shape, same paths:
+
+```bash
+claude -p --mcp-config oncall.mcp.json "PRODUCTION ALERT: 'checkout error rate 40% for
+six minutes'. Impact start 02:41Z, now 02:47Z, severity sev1. Use the oncall-router tools
+to write a first-ten-minutes brief: owner, escalation order with due minutes, first three
+runbook moves, current hop on the clock. Only report what the tools return."
+```
+
+`claude -p` writes the brief to stdout; piping that into your chat tool's incoming
+webhook is the one line left to you, on purpose. Two honest notes: the server stays
+keyless, but the assistant running it authenticates as itself; and the same pattern works
+with the Claude Agent SDK or any MCP-speaking agent runner. The assistant drafts the
+brief; a human decides what to do with it. That division of labor is deliberate and this
+server enforces its half of it.
+
+**3. The day after (see "After the incident" below).** Feed `mttx_review` the timestamps
+you actually have and learn which phase ate the incident - so next month's 2:47am is
+shorter than this one's.
 
 ## The five tools
 
@@ -30,20 +110,18 @@ tool that measures from ticket creation will quietly tell you that it does.
 | `mttx_review` | where the minutes went - Detect, React, Mitigate - and which tool shrinks the worst phase | measures only phases whose endpoints were supplied; refuses out-of-order timestamps by name |
 
 Every tool fails closed. A near miss never silently resolves, because a confident wrong
-escalation costs more than an honest "I do not know".
+escalation at 2am costs more than an honest "I do not know".
 
-See [docs/TRANSCRIPT.md](docs/TRANSCRIPT.md) for real output from every tool, including
-the failure paths. CI regenerates that file and fails the build if it drifts from what the
-code actually produces.
-
-## Run it
+## Run it in sixty seconds
 
 ```bash
-git clone <this repo> && cd oncall-router-mcp
+git clone <this repo> && cd oncall-router-mcp   # Python 3.11+ (tomllib is stdlib from 3.11)
 python -m pip install "pytest>=7"          # the only dependency, and only to run the tests
 python -m pytest tests/ -q                 # run the gates; the count is whatever pytest reports, never a number this file maintains
 PYTHONPATH=src python -m oncall_router.server --catalog catalog.toml
 ```
+
+On PowerShell, the last line is: `$env:PYTHONPATH="src"; python -m oncall_router.server --catalog catalog.toml`
 
 To wire it into Claude Desktop or Claude Code, add this to your MCP client config,
 using absolute paths:
@@ -60,9 +138,10 @@ using absolute paths:
 }
 ```
 
-Point an MCP client at that command. To use your own data, copy `catalog.toml`, edit it,
-and pass `--catalog yours.toml`. No code changes: the catalog is data, and a test proves
-it by running the same tool against two different catalogs.
+To use your own data, copy `catalog.toml`, edit it, and pass `--catalog yours.toml`. No
+code changes: the catalog is data, and a test proves it by running the same tool against
+two different catalogs. Editing one readable file is the entire onboarding cost for a new
+team.
 
 ## The catalog
 
@@ -95,6 +174,18 @@ right now. And there is no grade, deliberately: thresholds for a "good" MTTx var
 order of magnitude across teams and tiers, so the shares and the dominant phase are
 reported as facts and the judgment stays with the team that owns the service.
 
+## Why it is built this way
+
+The design opinion in the code is that **escalation timing runs from impact start**. A
+ticket opened twenty minutes late does not buy the responder twenty extra minutes, and a
+tool that measures from ticket creation will quietly tell you that it does.
+
+The second opinion is that **at 2am, "I do not know" beats a plausible guess**, every
+time. That is why unknown services return candidates instead of a best match, why an
+unknown severity is refused instead of defaulted, and why a missing timestamp becomes
+`unmeasured` instead of an interpolation. An assistant wired to this server inherits that
+honesty: it cannot confidently misroute you, because the tool underneath refuses to.
+
 ## What this deliberately does not do
 
 - **No live integrations.** It does not read your incident tool, your rotation tool, or
@@ -111,15 +202,26 @@ reported as facts and the judgment stays with the team that owns the service.
 
 ## Gates
 
-Built against a rubric frozen before the first line of code. The ones worth knowing:
+Built against a rubric frozen before the first line of code; the rubric lives in the
+project's private planning notes, so the gates below are the subset this repo can prove.
+The ones worth knowing:
 
 - Every tool answers through a real client speaking the wire protocol, not just as a
   function call in a test.
 - Every tool has a failure-path test proving it declines rather than guesses.
-- Tests were observed failing before each implementation existed.
+- Tests were written and observed failing before each implementation existed.
 - Swapping the catalog changes every answer with no code edit, proven by a test.
 - The committed transcript regenerates, or the build fails.
+- One malformed client message never ends the session, and errors never leak the
+  deployment path.
+- The whole suite runs in CI on Linux and Windows on every push.
 - No credentials, no network calls in the source, no employer content, no third-party
   imports. This gate blocks.
 
+## Who built this
 
+Built by an SRE lead who carries a real pager and wanted the first ten minutes back.
+Part of a public, CI-verified portfolio where every published number regenerates or the
+build fails: [lzbiala.github.io](https://lzbiala.github.io)
+
+MIT licensed. Copy the catalog, keep the fail-closed defaults, make it yours.
