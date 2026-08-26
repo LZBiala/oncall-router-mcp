@@ -29,7 +29,7 @@ def _talk(messages: list[dict]) -> list[dict]:
     return [json.loads(l) for l in proc.stdout.splitlines() if l.strip()]
 
 
-def test_server_initializes_and_advertises_four_tools() -> None:
+def test_server_initializes_and_advertises_five_tools() -> None:
     out = _talk([
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
@@ -37,7 +37,8 @@ def test_server_initializes_and_advertises_four_tools() -> None:
     init, listing = out[0], out[1]
     assert init["result"]["serverInfo"]["name"] == "oncall-router"
     names = {t["name"] for t in listing["result"]["tools"]}
-    assert names == {"who_owns", "escalation_path", "playbook", "impact_clock"}
+    assert names == {"who_owns", "escalation_path", "playbook", "impact_clock",
+                     "mttx_review"}
     # every advertised tool declares what it needs
     for t in listing["result"]["tools"]:
         assert t["description"].strip()
@@ -56,6 +57,12 @@ def test_server_initializes_and_advertises_four_tools() -> None:
                           "impact_start": "2026-08-23T14:00:00Z",
                           "now": "2026-08-23T14:12:00Z"},
          lambda r: r["elapsed_minutes"] == 12 and r["current_hop"]["at_minute"] == 10),
+        ("mttx_review", {"impact_start": "2026-08-24T14:00:00Z",
+                         "detected": "2026-08-24T14:10:00Z",
+                         "acknowledged": "2026-08-24T14:15:00Z",
+                         "mitigated": "2026-08-24T14:45:00Z",
+                         "service": "cart"},
+         lambda r: r["dominant_phase"] == "mitigate" and r["service"] == "checkout"),
     ],
 )
 def test_each_tool_answers_through_the_client(name, args, expect) -> None:

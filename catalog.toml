@@ -43,7 +43,41 @@ escalation = [
   { role = "incident commander", handle = "@incident-command", within_minutes = 5 },
 ]
 
+[teams.storefront]
+name = "Storefront"
+hours = "24x7"
+next_hop = "platform-incident-command"
+escalation = [
+  { role = "primary on-call", handle = "@storefront-oncall", within_minutes = 5 },
+  { role = "secondary on-call", handle = "@storefront-secondary", within_minutes = 15 },
+  { role = "engineering manager", handle = "@storefront-em", within_minutes = 30 },
+]
+
 # -------------------------------------------------------------------------- services
+
+# The teaching example: a service anyone recognises, under the names people actually
+# shout during an incident. Nobody types "checkout-service-v2" at 2am.
+
+[services.checkout]
+aliases = ["cart", "buy button", "the checkout"]
+owner = "storefront"
+tier = 1
+description = "The page where customers pay. When this hurts, revenue hurts by the minute."
+
+[services.checkout.runbook]
+general = [
+  "Check the payment success rate against the seven-day baseline before anything else.",
+  "Compare against the last deploy: most checkout pain follows a change somebody shipped.",
+  "If one payment method is failing, disable that method before debugging it - customers can still pay another way while you look.",
+]
+declines = [
+  "Split declines by payment method: one failing method hides in the overall rate.",
+  "Check whether the declines carry one error code or many. One code is upstream; many is us.",
+]
+"slow pages" = [
+  "Check the checkout page's slowest third-party call first: payments, tax, shipping quotes.",
+  "A slow dependency you cannot fix right now can usually be timeboxed or cached.",
+]
 
 [services.api-gateway]
 aliases = ["gateway", "apigw", "edge", "the gateway"]

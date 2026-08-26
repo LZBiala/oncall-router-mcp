@@ -1,4 +1,4 @@
-"""MCP server exposing the four tools over stdio.
+"""MCP server exposing the five tools over stdio.
 
 The transport layer is deliberately thin. Everything that decides anything lives in
 tools.py as pure functions, so the behaviour is testable without a client and the server
@@ -8,7 +8,7 @@ Two things this file takes seriously, both learned from an adversarial review:
 
 Nothing a client sends may end the session. A model emitting a bare number where a string
 was declared is an everyday occurrence, and a server pitched on reliability at 2am cannot
-answer that by dying and taking its other three tools with it.
+answer that by dying and taking its other four tools with it.
 
 Errors carry a short generic message. A traceback would disclose the build path of whoever
 deployed it, which is nobody's business.
@@ -92,6 +92,39 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["service", "severity", "impact_start", "now"],
         },
     },
+    {
+        "name": "mttx_review",
+        "description": (
+            "Where the minutes of an incident went: Detect (impact to detected), React "
+            "(detected to acknowledged), Mitigate (acknowledged to mitigated), plus an "
+            "optional Resolve tail. Names the dominant phase and which tool shrinks it "
+            "next time. Measures only phases whose endpoints were supplied - a missing "
+            "milestone is reported as unmeasured, never guessed. For a still-open "
+            "incident (no mitigated), now is required and the currently bleeding phase "
+            "is named. No grade, deliberately: thresholds belong to the owning team."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "impact_start": {"type": "string",
+                                 "description": "ISO 8601. When customers started feeling it."},
+                "detected": {"type": "string",
+                             "description": "ISO 8601. When anyone first knew."},
+                "acknowledged": {"type": "string",
+                                 "description": "ISO 8601. When a responder engaged."},
+                "mitigated": {"type": "string",
+                              "description": "ISO 8601. When customers stopped feeling it."},
+                "resolved": {"type": "string",
+                             "description": "ISO 8601. Optional: when cleanup finished."},
+                "now": {"type": "string",
+                        "description": "ISO 8601. Required when the incident is still open."},
+                "service": {"type": "string",
+                            "description": "Optional service name or alias, for context "
+                                           "and next-tool routing."},
+            },
+            "required": ["impact_start"],
+        },
+    },
 ]
 
 # what each tool's string fields are called, so the boundary can check them
@@ -100,6 +133,8 @@ _STRING_FIELDS = {
     "escalation_path": ("service", "severity"),
     "playbook": ("service", "symptom"),
     "impact_clock": ("service", "severity", "impact_start", "now"),
+    "mttx_review": ("impact_start", "detected", "acknowledged", "mitigated",
+                    "resolved", "now", "service"),
 }
 
 
@@ -133,6 +168,12 @@ def dispatch(cat: Catalog, name: str, args: Any) -> dict[str, Any]:
         return tools.impact_clock(
             cat, args.get("service", ""), args.get("severity", ""),
             args.get("impact_start", ""), args.get("now"),
+        )
+    if name == "mttx_review":
+        return tools.mttx_review(
+            cat, args.get("impact_start", ""), args.get("detected"),
+            args.get("acknowledged"), args.get("mitigated"), args.get("resolved"),
+            args.get("now"), args.get("service"),
         )
     return {"found": False, "reason": f"Unknown tool {name!r}."}
 

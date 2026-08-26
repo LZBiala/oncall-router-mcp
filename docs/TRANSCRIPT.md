@@ -158,6 +158,171 @@ impact_clock("service": "api-gateway", "severity": "sev1", "impact_start": "2026
 }
 ```
 
+## Someone shouts the name customers use, not the name in the repo
+
+```
+who_owns("service": "buy button")
+```
+
+```json
+{
+  "found": true,
+  "asked_for": "buy button",
+  "service": "checkout",
+  "description": "The page where customers pay. When this hurts, revenue hurts by the minute.",
+  "tier": 1,
+  "team": "Storefront",
+  "hours": "24x7",
+  "contact": "@storefront-oncall",
+  "contact_role": "primary on-call"
+}
+```
+
+## The incident is over. Where did the 45 minutes actually go?
+
+```
+mttx_review("impact_start": "2026-08-24T14:00:00Z", "detected": "2026-08-24T14:10:00Z", "acknowledged": "2026-08-24T14:15:00Z", "mitigated": "2026-08-24T14:45:00Z", "resolved": "2026-08-24T15:00:00Z", "service": "checkout")
+```
+
+```json
+{
+  "found": true,
+  "incident_open": false,
+  "phases": [
+    {
+      "name": "detect",
+      "minutes": 10,
+      "share_of_impact": 22,
+      "from": "impact_start",
+      "to": "detected"
+    },
+    {
+      "name": "react",
+      "minutes": 5,
+      "share_of_impact": 11,
+      "from": "detected",
+      "to": "acknowledged"
+    },
+    {
+      "name": "mitigate",
+      "minutes": 30,
+      "share_of_impact": 67,
+      "from": "acknowledged",
+      "to": "mitigated"
+    },
+    {
+      "name": "resolve",
+      "minutes": 15,
+      "share_of_impact": null,
+      "from": "mitigated",
+      "to": "resolved"
+    }
+  ],
+  "unmeasured": [],
+  "total_impact_minutes": 45,
+  "dominant_phase": "mitigate",
+  "dominant_note": "The minutes went to deciding what to try. Keep the first three moves in the runbook so nobody invents them at 2am - that is what playbook serves, and rollback usually beats diagnosis while customers hurt.",
+  "next_tool": {
+    "name": "playbook",
+    "arguments": {
+      "service": "checkout"
+    }
+  },
+  "note": "A phase is measured only when both endpoints were supplied. No grade on purpose: thresholds belong to the team that owns the service.",
+  "service": "checkout",
+  "team": "Storefront"
+}
+```
+
+## A messier one: nobody wrote down when a responder engaged
+
+```
+mttx_review("impact_start": "2026-08-24T14:00:00Z", "detected": "2026-08-24T14:10:00Z", "mitigated": "2026-08-24T14:45:00Z", "service": "checkout")
+```
+
+```json
+{
+  "found": true,
+  "incident_open": false,
+  "phases": [
+    {
+      "name": "detect",
+      "minutes": 10,
+      "share_of_impact": 22,
+      "from": "impact_start",
+      "to": "detected"
+    }
+  ],
+  "unmeasured": [
+    "react",
+    "mitigate"
+  ],
+  "total_impact_minutes": 45,
+  "dominant_phase": null,
+  "dominant_note": "35 of the 45 impact minutes fall in unmeasured phases (react, mitigate), so no phase can honestly be called dominant. Supplying acknowledged would settle it.",
+  "next_tool": null,
+  "note": "A phase is measured only when both endpoints were supplied. No grade on purpose: thresholds belong to the team that owns the service.",
+  "service": "checkout",
+  "team": "Storefront"
+}
+```
+
+## It is still going. Which phase is bleeding right now?
+
+```
+mttx_review("impact_start": "2026-08-24T14:00:00Z", "detected": "2026-08-24T14:10:00Z", "now": "2026-08-24T14:30:00Z", "service": "checkout")
+```
+
+```json
+{
+  "found": true,
+  "incident_open": true,
+  "phases": [
+    {
+      "name": "detect",
+      "minutes": 10,
+      "share_of_impact": null,
+      "from": "impact_start",
+      "to": "detected"
+    }
+  ],
+  "unmeasured": [
+    "react",
+    "mitigate"
+  ],
+  "total_impact_minutes": null,
+  "dominant_phase": null,
+  "dominant_note": "Someone knows and nobody is engaged yet. This is the exact minute escalation_path exists for: get the next hop moving.",
+  "next_tool": {
+    "name": "escalation_path",
+    "arguments": {
+      "service": "checkout"
+    },
+    "also_needs": [
+      "severity"
+    ]
+  },
+  "note": "A phase is measured only when both endpoints were supplied. No grade on purpose: thresholds belong to the team that owns the service.",
+  "service": "checkout",
+  "team": "Storefront",
+  "open_phase": "react",
+  "minutes_in_open_phase": 20
+}
+```
+
+## Timestamps out of order get refused, not reinterpreted
+
+```
+mttx_review("impact_start": "2026-08-24T14:00:00Z", "detected": "2026-08-24T14:15:00Z", "acknowledged": "2026-08-24T14:05:00Z", "mitigated": "2026-08-24T14:45:00Z")
+```
+
+```json
+{
+  "found": false,
+  "reason": "acknowledged (2026-08-24T14:05:00+00:00) is before detected (2026-08-24T14:15:00+00:00). Check the timestamps before drawing any conclusion from them."
+}
+```
+
 ## Why impact start, and not ticket creation
 
 Identical ticket, identical clock time, impact starts 28 minutes apart.

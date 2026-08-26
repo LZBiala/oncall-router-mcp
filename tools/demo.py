@@ -35,6 +35,30 @@ SCENES = [
      "impact_clock", {"service": "api-gateway", "severity": "sev1",
                       "impact_start": "2026-08-23T14:00:00Z",
                       "now": "2026-08-23T14:22:00Z"}),
+    ("Someone shouts the name customers use, not the name in the repo",
+     "who_owns", {"service": "buy button"}),
+    ("The incident is over. Where did the 45 minutes actually go?",
+     "mttx_review", {"impact_start": "2026-08-24T14:00:00Z",
+                     "detected": "2026-08-24T14:10:00Z",
+                     "acknowledged": "2026-08-24T14:15:00Z",
+                     "mitigated": "2026-08-24T14:45:00Z",
+                     "resolved": "2026-08-24T15:00:00Z",
+                     "service": "checkout"}),
+    ("A messier one: nobody wrote down when a responder engaged",
+     "mttx_review", {"impact_start": "2026-08-24T14:00:00Z",
+                     "detected": "2026-08-24T14:10:00Z",
+                     "mitigated": "2026-08-24T14:45:00Z",
+                     "service": "checkout"}),
+    ("It is still going. Which phase is bleeding right now?",
+     "mttx_review", {"impact_start": "2026-08-24T14:00:00Z",
+                     "detected": "2026-08-24T14:10:00Z",
+                     "now": "2026-08-24T14:30:00Z",
+                     "service": "checkout"}),
+    ("Timestamps out of order get refused, not reinterpreted",
+     "mttx_review", {"impact_start": "2026-08-24T14:00:00Z",
+                     "detected": "2026-08-24T14:15:00Z",
+                     "acknowledged": "2026-08-24T14:05:00Z",
+                     "mitigated": "2026-08-24T14:45:00Z"}),
 ]
 
 # The point of the whole project, shown as a comparison rather than asserted. Same clock
@@ -94,6 +118,10 @@ def _positional(name: str, args: dict) -> list:
         return [args["service"], args.get("symptom")]
     if name == "impact_clock":
         return [args["service"], args["severity"], args["impact_start"], args.get("now")]
+    if name == "mttx_review":
+        return [args["impact_start"], args.get("detected"), args.get("acknowledged"),
+                args.get("mitigated"), args.get("resolved"), args.get("now"),
+                args.get("service")]
     raise ValueError(name)
 
 
