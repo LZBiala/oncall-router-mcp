@@ -10,6 +10,7 @@ unknown severity does not fall back to the quietest one. A confident wrong escal
 from __future__ import annotations
 
 import datetime as dt
+import re
 from typing import Any
 
 from .catalog import Catalog
@@ -218,9 +219,13 @@ _PHASE_NOTES_OPEN = {
                  "first moves; while customers hurt, rollback usually beats diagnosis.",
                  "playbook"),
 }
-# What a referral cannot supply itself, so the caller is never handed a call that will
-# be refused verbatim the moment they make it.
-_TOOL_ALSO_NEEDS = {"escalation_path": ["severity"], "playbook": []}
+# What each referral target requires to answer at all. also_needs is computed as these
+# requirements minus whatever the referral could fill in itself, so the caller is never
+# handed a call that will be refused verbatim the moment they make it. An earlier version
+# kept only the fields mttx_review could never know (severity) and forgot that service is
+# optional here too: a review run from bare timestamps then referred the caller to
+# playbook with empty arguments and no hint, and the very next call came back refused.
+_TOOL_REQUIRES = {"escalation_path": ["service", "severity"], "playbook": ["service"]}
 
 
 def mttx_review(
@@ -263,9 +268,12 @@ def mttx_review(
             return {"found": False,
                     "reason": f"{field} must be an ISO 8601 timestamp, for example "
                               f"2026-08-24T14:00:00Z. Got {value!r}."}
-        if len(str(value).strip()) <= 10:
+        if not re.search(r"[T ]\d{2}:\d{2}", str(value).strip()):
             # fromisoformat reads a bare date as midnight, which would invent the time of
-            # day and, with it, an entire phantom phase. A date is not a timestamp.
+            # day and, with it, an entire phantom phase. A date is not a timestamp. The
+            # check is semantic (an actual HH:MM after the date), not a length heuristic:
+            # "2026-08-24Z" and "2026-08-24+00:00" are longer than a date and still carry
+            # no time of day.
             return {"found": False,
                     "reason": f"{field} is a date with no time of day ({value!r}). An "
                               f"incident is timed in minutes; supply the time, for "
@@ -407,7 +415,7 @@ def mttx_review(
         if svc_name:
             args["service"] = svc_name
         next_tool = {"name": next_tool_name, "arguments": args}
-        also = [f for f in _TOOL_ALSO_NEEDS.get(next_tool_name, [])]
+        also = [f for f in _TOOL_REQUIRES.get(next_tool_name, []) if f not in args]
         if also:
             next_tool["also_needs"] = also
 

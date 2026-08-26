@@ -4,6 +4,7 @@ G6 blocks: if it fails, nothing gets committed until it is fixed.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -100,16 +101,65 @@ def test_no_outbound_network_in_the_source() -> None:
     assert not hits, "network access in a server that reads a local file: " + "; ".join(hits)
 
 
-def test_no_employer_identifying_content() -> None:
-    """The sample catalog is fictional. Nothing from a real employer belongs here."""
-    banned = ("wells fargo", "wellsfargo", "servicenow", "sharepoint", "splunk")
+# SHA-256 of each banned term, so the gate can enforce "this name never appears in the
+# repo" without the gate itself being the one place the name appears. An earlier version
+# kept the terms in plain text here and excluded this file from its own scan, which made
+# the published claim false one file away from where it was made. Hashes fix both: this
+# test needs no self-exclusion, and the scan below covers this file too.
+_BANNED_HASHES = frozenset({
+    "311ff2d71234e230eb559f843c1f5c548302246a365221713da47017e656e672",
+    "62fd6c7860342a316c30c63d12f860125feccbf30e914d51dee6c2fdced4f606",
+    "b5738c169b693bee89e1b74ebd48e0dfa53a34e8571790b7727721a0bfadc470",
+    "9211da2bdb79a1bf369af43968fb152c553345fe409cd7e4bc5c43f9003d6ded",
+    "101e21bef69a3df68f36ca31deb6616f10cc70e4bae8eed9ce83a9effb1fd5cb",
+})
+
+
+def _employer_hits(files: list[Path], banned_hashes: frozenset[str]) -> list[str]:
+    """Hash every word, word pair, and joined word pair; report files matching the set."""
     hits = []
-    for f in _text_files():
-        body = f.read_text(encoding="utf-8", errors="ignore").lower()
-        for token in banned:
-            if token in body:
-                hits.append(f"{f.relative_to(ROOT)}: {token}")
-    assert not hits, "employer-identifying content: " + "; ".join(hits)
+    for f in files:
+        try:
+            body = f.read_text(encoding="utf-8", errors="ignore").lower()
+        except OSError:
+            continue
+        words = re.findall(r"[a-z0-9]+", body)
+        candidates = set(words)
+        for a, b in zip(words, words[1:]):
+            candidates.add(f"{a} {b}")
+            candidates.add(a + b)
+        for c in candidates:
+            if hashlib.sha256(c.encode()).hexdigest() in banned_hashes:
+                try:
+                    hits.append(str(f.relative_to(ROOT)))
+                except ValueError:   # a planted tmp file in the self-test lives outside ROOT
+                    hits.append(f.name)
+                break
+    return hits
+
+
+def test_no_employer_identifying_content() -> None:
+    """The sample catalog is fictional. Nothing from a real employer belongs here.
+
+    Scans every text file including this one: with hashed terms there is nothing here
+    a scan could object to, which is the whole point.
+    """
+    hits = _employer_hits(_text_files() + [SELF], _BANNED_HASHES)
+    assert not hits, "employer-identifying content in: " + "; ".join(hits)
+
+
+def test_the_employer_gate_can_actually_fail(tmp_path: Path) -> None:
+    """Prove the hash scan fires, using a synthetic term so nothing real is printed."""
+    # two words, matching the shape of the real terms: the scanner hashes unigrams,
+    # bigrams, and joined bigrams, so a longer phrase would never be a candidate
+    term = "synthetic employer"
+    h = frozenset({hashlib.sha256(term.encode()).hexdigest()})
+    clean = tmp_path / "clean.md"
+    clean.write_text("an innocuous file about gateways", encoding="utf-8")
+    dirty = tmp_path / "dirty.md"
+    dirty.write_text(f"notes mentioning {term} in passing", encoding="utf-8")
+    caught = _employer_hits([clean, dirty], h)
+    assert caught == ["dirty.md"], caught
 
 
 def test_no_third_party_imports() -> None:

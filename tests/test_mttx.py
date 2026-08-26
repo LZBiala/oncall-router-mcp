@@ -6,6 +6,7 @@ exactly what is wrong, never grade, and route the responder back into the server
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -270,6 +271,74 @@ def test_a_bare_date_cannot_time_an_incident():
                acknowledged="2026-08-24T14:15:00", mitigated="2026-08-24T14:45:00")
     assert r["found"] is False
     assert "time" in r["reason"].lower()
+
+
+# ---------------------------------------------------- adversarial QA round 2 (2026-08-26)
+# A second fresh-context pass, run after the first round's fixes. Each test below encodes
+# a hole that pass found: the guards existed, but only for the spelling somebody thought of.
+
+def test_every_spelling_of_a_bare_date_is_refused():
+    # The first guard measured string LENGTH (a date is 10 characters), so any longer
+    # spelling of the same dateness walked through: a trailing Z, an explicit offset, or
+    # the compact form. The guard is semantic now - no HH:MM after the date, no timestamp.
+    for bad in ("2026-08-24", "2026-08-24Z", "2026-08-24+00:00", "20260824"):
+        r = review(impact_start=bad, detected="2026-08-24T14:10:00Z",
+                   acknowledged="2026-08-24T14:15:00Z", mitigated="2026-08-24T14:45:00Z")
+        assert r["found"] is False, bad
+        assert "time" in r["reason"].lower(), bad
+    # and it must fire for ANY field, not only impact_start
+    r = review(impact_start=T0, detected="2026-08-24Z",
+               acknowledged=T_ACKED, mitigated=T_MITIGATED)
+    assert r["found"] is False
+
+
+def test_a_referral_without_service_says_service_is_still_needed():
+    # mttx_review works from bare timestamps, so service is optional here - but the tools
+    # it refers to cannot answer without one. The old referral handed back arguments={}
+    # with no hint, and the very next call came back refused. also_needs must name every
+    # field the target requires that the referral could not fill in.
+    r = review(impact_start=T0, detected=T_DETECTED, acknowledged=T_ACKED,
+               mitigated=T_MITIGATED)
+    nt = r["next_tool"]
+    assert nt is not None
+    assert "service" not in nt["arguments"]
+    assert "service" in nt.get("also_needs", []), nt
+
+    # the open-incident referral has the same duty
+    r2 = review(impact_start=T0, detected=T_DETECTED, acknowledged=T_ACKED,
+                now="2026-08-24T15:00:00Z")
+    nt2 = r2["next_tool"]
+    assert nt2 is not None
+    assert "service" in nt2.get("also_needs", []), nt2
+
+    # and when service IS supplied, it must not be re-demanded
+    r3 = review(impact_start=T0, detected=T_DETECTED, acknowledged=T_ACKED,
+                mitigated=T_MITIGATED, service="gateway")
+    nt3 = r3["next_tool"]
+    assert nt3 is not None
+    assert nt3["arguments"].get("service") == "api-gateway"
+    assert "service" not in nt3.get("also_needs", [])
+
+
+def test_no_grade_hides_in_the_values_either():
+    # The R6 test above checks KEY names. A verdict could still arrive as a value - a
+    # dominant_note saying the response was "poor", say - so scan the serialized values
+    # too. The standing top-level note states the no-grade rule in words that include the
+    # word itself, so it is excluded and everything else is scanned.
+    shapes = [
+        dict(impact_start=T0, detected=T_DETECTED, acknowledged=T_ACKED,
+             mitigated=T_MITIGATED, resolved=T_RESOLVED, service="gateway"),
+        dict(impact_start=T0, detected=T_DETECTED, acknowledged=T_ACKED,
+             now="2026-08-24T15:00:00Z", service="gateway"),
+        dict(impact_start=T0, detected=T_DETECTED, mitigated=T_MITIGATED),
+    ]
+    for kw in shapes:
+        r = review(**kw)
+        assert r["found"] is True, kw
+        body = {k: v for k, v in r.items() if k != "note"}
+        flat = json.dumps(body).lower()
+        for word in ("grade", "score", "verdict", "rating", "excellent", "poor "):
+            assert word not in flat, (word, kw)
 
 
 def test_the_referral_names_what_it_cannot_supply():

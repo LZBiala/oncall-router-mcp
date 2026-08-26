@@ -82,11 +82,18 @@ glasses. Save the JSON config from the setup section below as `oncall.mcp.json` 
 shape, same paths:
 
 ```bash
-claude -p --mcp-config oncall.mcp.json "PRODUCTION ALERT: 'checkout error rate 40% for
-six minutes'. Impact start 02:41Z, now 02:47Z, severity sev1. Use the oncall-router tools
-to write a first-ten-minutes brief: owner, escalation order with due minutes, first three
-runbook moves, current hop on the clock. Only report what the tools return."
+claude -p "PRODUCTION ALERT: 'checkout error rate 40% for six minutes'. Impact start
+02:41Z, now 02:47Z, severity sev1. Use the oncall-router tools to write a
+first-ten-minutes brief: owner, escalation order with due minutes, first three runbook
+moves, current hop on the clock. Only report what the tools return." \
+  --mcp-config oncall.mcp.json \
+  --allowedTools "mcp__oncall-router__who_owns,mcp__oncall-router__escalation_path,mcp__oncall-router__playbook,mcp__oncall-router__impact_clock"
 ```
+
+The `--allowedTools` grant is not optional: a headless run has nobody to answer a
+permission prompt, so without it the assistant can see the tools and use none of them.
+The names follow `mcp__<server>__<tool>`, where `<server>` is the key you chose in the
+JSON config (`oncall-router` above).
 
 `claude -p` writes the brief to stdout; piping that into your chat tool's incoming
 webhook is the one line left to you, on purpose. Two honest notes: the server stays
@@ -137,6 +144,11 @@ using absolute paths:
   }
 }
 ```
+
+`"command"` must resolve to a Python 3.11 or newer. Desktop clients do not inherit your
+shell's PATH, so on macOS especially, replace `"python"` with the absolute path from
+`which python3` - and note that `/usr/bin/python3` is Apple's 3.9 stub, which is too old.
+On Windows, use the full path to your `python.exe`.
 
 To use your own data, copy `catalog.toml`, edit it, and pass `--catalog yours.toml`. No
 code changes: the catalog is data, and a test proves it by running the same tool against
@@ -209,7 +221,6 @@ enforces, worth knowing:
 - Every tool answers through a real client speaking the wire protocol, not just as a
   function call in a test.
 - Every tool has a failure-path test proving it declines rather than guesses.
-- Tests were written and observed failing before each implementation existed.
 - Swapping the catalog changes every answer with no code edit, proven by a test.
 - The committed transcript regenerates, or the build fails.
 - One malformed client message never ends the session, and errors never leak the
@@ -217,6 +228,11 @@ enforces, worth knowing:
 - The whole suite runs in CI on Linux and Windows on every push.
 - No credentials, no network calls in the source, no employer content, no third-party
   imports. This gate blocks.
+
+One process claim sits outside that list on purpose: tests were written and observed
+failing before each implementation existed. CI cannot enforce history, so that is an
+assertion you audit rather than a gate a build proves - the commit trail is the closest
+thing to evidence it has.
 
 ## Who built this
 

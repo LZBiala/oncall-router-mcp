@@ -13,9 +13,12 @@ so here is all of them - a fresh-context reviewer diffed this file against the o
 and this list is what survived that check:
 
 1. **One redaction in G6.** The original named a specific employer whose data must never
-   appear in this repo. The repo's own hygiene gate fails the build if that name is
-   printed anywhere, including here, so it reads "[employer]" below. The gate it
-   describes is real and runs in CI.
+   appear in this repo, so it reads "[employer]" below. The gate that enforces this
+   compares SHA-256 hashes of the banned terms, so the scan covers every file in the repo
+   including the gate's own source, and the name appears nowhere in the working tree - a
+   first version kept the terms in plain text inside the gate and exempted that one file
+   from its own scan, which made this note false one file away from where it was made.
+   That version existed in early history; the hash form is what ships.
 2. **G4's filename was generalized.** The original said `catalog.yaml`; between freezing
    and the first commit the file became `catalog.toml`, when `tomllib` being in the
    Python standard library made TOML the zero-dependency choice. Rather than publish a
@@ -127,5 +130,8 @@ R10. **RED observed before GREEN** for every new test; QA workflow findings tria
 ## Checking it yourself
 
 The gates that CI can enforce live in `tests/` - run `python -m pytest tests/ -q` and
-read the test names against the gate numbers above. G9 and G10 are human gates: the
-walkthrough read-aloud and the five-minute cold clone are yours to try.
+read the test names against the gate numbers above. Four gates are human gates that no
+build can prove, and saying so plainly beats implying otherwise: G3 and R10 (RED observed
+before GREEN) are process history, auditable only through the commit trail; G7 is a
+reading judgment; G9 and G10 (the walkthrough read-aloud and the five-minute cold clone)
+are yours to try.

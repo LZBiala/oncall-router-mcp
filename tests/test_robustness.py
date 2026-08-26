@@ -60,6 +60,34 @@ def test_a_badly_typed_argument_does_not_kill_the_session(bad_args) -> None:
     assert good["found"] is True and good["team"] == "Edge Gateway"
 
 
+def test_a_malformed_message_does_not_kill_the_session() -> None:
+    """Malformed ARGUMENTS were covered; malformed MESSAGES were not.
+
+    The guards for these existed (a JSONDecodeError catch, an isinstance check on the
+    parsed value) but nothing exercised them, so a refactor could have deleted either
+    without a single test going red. Interleave garbage between two good calls and
+    require the session to survive all of it.
+    """
+    payload = "\n".join([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+        "not json at all {{{",
+        '"a bare string"',            # valid JSON, not an object
+        "[1, 2, 3]",                  # valid JSON, an array
+        "12345",
+        json.dumps({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                    "params": {"name": "who_owns", "arguments": {"service": "gateway"}}}),
+    ]) + "\n"
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    proc = subprocess.run(
+        [sys.executable, "-m", "oncall_router.server", "--catalog", str(CATALOG)],
+        input=payload, capture_output=True, text=True, timeout=60, cwd=str(ROOT), env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Traceback" not in proc.stderr
+    replies = {json.loads(l).get("id") for l in proc.stdout.splitlines() if l.strip()}
+    assert 9 in replies, "the good call after the garbage got no reply: " + proc.stderr[-300:]
+
+
 def test_a_null_params_field_does_not_kill_the_session() -> None:
     proc = _talk([
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
