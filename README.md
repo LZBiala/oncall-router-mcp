@@ -202,9 +202,9 @@ honesty: it cannot confidently misroute you, because the tool underneath refuses
 
 ## Gates
 
-Built against a rubric frozen before the first line of code; the rubric lives in the
-project's private planning notes, so the gates below are the subset this repo can prove.
-The ones worth knowing:
+Built against a rubric frozen before the first line of code - published in full, with
+its publication edits disclosed, as [docs/RUBRIC.md](docs/RUBRIC.md). The gates CI
+enforces, worth knowing:
 
 - Every tool answers through a real client speaking the wire protocol, not just as a
   function call in a test.
