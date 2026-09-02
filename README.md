@@ -8,6 +8,54 @@ say to try first**. Plus a fourth that most tools get wrong, which is **where sh
 on the clock right now**, measured from when impact started rather than from when somebody
 opened a ticket.
 
+## What this is
+
+A small program that reads one text file about your services and answers five questions for an AI assistant: who owns this, who to wake and by when (escalation: the next person to call when the first does not answer), what to try first, which escalation step should be active by now, and, the day after, which phase of the incident ate the minutes. It never pages anyone or changes anything; it only answers. In jargon, an MCP server. MCP is the Model Context Protocol, a published standard for how an assistant plugs into outside tools, the way a wall socket is a standard for plugging in appliances. This one speaks the protocol by hand, three message types and no library, and its own source says a production deployment would use the official one.
+
+## Why it matters
+
+At 2am the first minutes of an incident go to finding who to call and what to try, not to fixing anything, because that knowledge sits in three places: a wiki nobody updated, a rotation tool that knows only this shift, and whoever has been there longest. This puts it in one file your assistant can read, and it would rather say "I do not know" than guess: a confident wrong page costs more than an honest refusal.
+
+## Try it
+
+Clone the repo (download a copy) and, inside it, run these three lines. Run on 2026-09-01 with Python 3.12.10 on Windows 11: the tests took 2.32 seconds; the clone and the install depend on your network and were not timed.
+
+```
+python -m pip install "pytest>=7,<10"
+python -m pytest tests/ -q
+PYTHONPATH=src python -m oncall_router.server --catalog catalog.toml
+```
+
+Line 1 installs pytest, the test runner and the only package the repo asks you to install. Line 2 runs the tests (count and caveat below). Line 3 starts the server, which waits silently for questions: correct, not a hang. On PowerShell that line is `$env:PYTHONPATH="src"; python -m oncall_router.server --catalog catalog.toml`. Asking who_owns with {"service": "cart"} answered checkout and its on-call handle, the name you would page (invented sample data). Wiring it into an assistant such as Claude Desktop or Claude Code is described below; no test in the repo exercises that wiring.
+
+## How it works, intuitively
+
+Picture the phone tree taped beside an office phone. This program is that sheet with one extra column: deadlines counted from when customers began hurting, not from when the ticket was opened. The sheet does not dial; neither does this.
+
+It loads the catalog once at start-up. The catalog is one plain-text file in TOML format, chosen because Python reads TOML with nothing extra installed. Per question it maps nicknames like "cart" to "checkout", walks the call order adding up minutes against the elapsed time you supplied (it never reads the wall clock; a search of the source finds no call to the system time), and writes one line back. An unknown name gets found false plus near-misses, never a guess.
+
+## What the numbers mean (and what they do not)
+
+Each number carries its measurement and its limit in the same sentence. Checkable means you can rerun it from a clone; asserted means you are taking my word for it. The three below are checkable; the date and machine they were run on are asserted.
+
+- 82 tests passed in one run of pytest on 2026-09-01. The repo's own setup instructions print no count on purpose, because it rises with every test added, so 82 holds for that date only. All 82 were written on the author's side, so they check what the author thought to check: green is a ceiling on what the suite can promise, not a proof the code is right.
+- 5 tools, confirmed by a live tools/list call (the protocol's "what can you do" question) and by a test that pins the exact set. The rubric, the pass-or-fail list frozen before the code, scoped four; mttx_review was added 2026-08-24 under a separate frozen extension, and the rubric file says so.
+- 0 runtime dependencies (nothing to install beyond Python 3.11 or newer) and no network calls in the source. Both are enforced by tests that read the text of the src/ folder: one rejects any import outside a short list of Python's own modules, the other fails if the source names any of five networking names. A text scan proves those words are absent; it is not a run watched with the network cable pulled.
+
+## Where it loses
+
+The repo names its edges: "No live integrations." "No write actions." "The shipped catalog is fictional." "The timing model is a convention, not a standard." Two claims it cannot prove: that every test was seen failing before its code existed (CI, the robot that reruns the tests on every push, cannot enforce history, and a log of 6 commits, the saved snapshots of the code, cannot show a per-test fail-then-pass sequence), and the headless assistant run described below, a run with no human at the keyboard, which nothing in the repo tests. One edge found by running it: pipe questions in by hand from a PowerShell set to UTF-8 output and the first line arrives with an invisible marker some Windows tools prepend to text, so the server skips that line without a word; the same lines from a plain file were all answered, and assistant clients do not send the marker.
+
+## Try your own case
+
+For your own file, copy catalog.toml, edit its services, teams and call orders, and run `PYTHONPATH=src python -m oncall_router.server --catalog your.toml`. To add a test, copy one row of the table of cases in tests/test_server.py (lines 48-67), change its inputs and expected output, and rerun pytest. The hygiene tests, the ones that police the text rather than the behaviour, scan every text file in the repo except the scanner itself: hyphens only, no key-shaped strings, none of nine marketing phrases.
+
+---
+
+## For engineers
+
+Everything below is the original technical README: the design, the measurements, and how to reproduce them.
+
 No runtime dependencies, no API key, no network calls, no telemetry. It reads one local
 file. pytest is needed only to run the gates.
 
